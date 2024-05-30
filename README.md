@@ -10,12 +10,13 @@ pip install oracledb
 ## Oracle Connection
 접속정보는 아래와 같이 oracle.cfg파일에 명시해 줍니다.
 
+```
 [CONFIG]
 CONNECT_STRING = b1-oracle:1521/XE
 TYPE_CONV_FORCE_TABLE = column_conv_table.csv
 ORACLE_USER = oracle
 ORACLE_PASSWORD = passw0rd
-
+```
 
 ## 컬럼타입 변환
 DBMS에서 사용하는 타입들은 다소 차이가 있지만, 변환가능한 타입은 cnv_ 함수로 만들었습니다.
