@@ -25,4 +25,6 @@ DBMS에서 사용하는 타입들은 다소 차이가 있지만, 변환가능한
 ## Partition 변환 
 Oracle의 Partition과 Informix Fragment는 List를 제외하면 거의 호환되지 않으므로 무시하시기 바랍니다.
 
-
+## 수행시
+수행시 사용자명을 지정하여야 합니다.
+python cnv_oracle_schema.py -u HR
