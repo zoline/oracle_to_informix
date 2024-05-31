@@ -784,7 +784,7 @@ class Oracle_Source:
 
     def make_user_schema(self,owner):
         owner = owner.upper()
-        table_filter = "OWNER = '%s' AND TABLE_NAME in ('STAT_CRSWIF_04', 'PERF_CRSWIF_0322_600','SYSLOG_RAW_TBL', 'ALARM_CUSTOMER_FTTH_TEMP') " % owner
+        table_filter = "OWNER = '%s' " % owner
         res= self.get_tables(table_filter)
         table_statement = ""
         if res is None:
