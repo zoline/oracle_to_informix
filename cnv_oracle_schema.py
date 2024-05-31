@@ -15,6 +15,13 @@ class Oracle_Source:
     DEVICE_TBLSPACES  = ['statdbs1','statdbs2','statdbs3','statdbs4','statdbs5','statdbs6']
     DEVICE_HVALUES    = ["devicenum < 'N'","devicenum >= 'N' and devicenum < 'NR03'","devicenum >= 'NR03' and devicenum < 'P'",
                          "devicenum >= 'P' and devicenum < 'PL03'","devicenum >= 'PL03'","devicenum is  NULL"]
+    GENDATE_PARTITIONS = ['p_gendate_part_1','p_gendate_part_2','p_gendate_part_3','p_gendate_part_4','p_gendate_part_5',
+                              'p_gendate_part_n','p_gendate_part_r']
+    GENDATE_TBLSPACES  = ['statdbs6','statdbs5','statdbs4','statdbs3','statdbs2','statdbs1','statdbs1']
+    GENDATE_HVALUES    = ["'2029','2024','2019'","'2028','2023','2018'","'2027','2022','2017'","'2026','2021','2016'",
+                          "'2025','2020','2015'",'NULL','REMAINDER']
+    
+
     @classmethod
     def make_cnv_dict(cls,conv_file):
         #print(conv_file)
@@ -445,8 +452,6 @@ class Oracle_Source:
             cur.execute(query)
             res = cur.fetchall()
             for COLUMN_ID, COLUMN_NAME,	DATA_TYPE,  DATA_LENGTH,	DATA_PRECISION,	DATA_SCALE,	NULLABLE,  DEFAULT_ON_NULL,  DEFAULT_LENGTH,	DATA_DEFAULT, AVG_COL_LEN, CHAR_LENGTH, IDENTITY_COLUMN in res:  
-                #print( COLUMN_NAME,	DATA_TYPE,  DATA_LENGTH,DATA_PRECISION,	DATA_SCALE,NULLABLE)
-                #print( COLUMN_NAME,	IDENTITY_COLUMN, DEFAULT_ON_NULL, DEFAULT_LENGTH,DATA_DEFAULT)
                 column_string += '     ' if column_string == '' else '    ,'
                 column_string += " %s " % COLUMN_NAME.lower()
                 
@@ -653,8 +658,9 @@ class Oracle_Source:
                       partition_string += part_string
                       return partition_string
                 case 'HASH':
+                      print("HASH %s " % part_column)
                       match  part_column:
-                          case 'DEVICENUM':
+                          case 'DEVICENUM':          # FOR TEST 
                                partition_string += " expression  \n" 
                                part_string = ""
                                for (partition, tblspace, hvalue) in zip(self.DEVICE_PARTITIONS,self.DEVICE_TBLSPACES,self.DEVICE_HVALUES):
@@ -662,11 +668,21 @@ class Oracle_Source:
                                    part_string += " partition  %s (%s) in  %s  \n" % (partition, hvalue, tblspace)
                                partition_string += part_string
                                return partition_string
-                          case  ' ':
-                               return ""
+                          case  'GENDATETIME':
+                               partition_string += " LIST (GENDATETIME[1,4])  \n" 
+                               part_string = ""
+
+                               for (partition, tblspace, hvalue) in zip(self.GENDATE_PARTITIONS,self.GENDATE_TBLSPACES,self.GENDATE_HVALUES):
+                                   part_string += '    ' if part_string == "" else '   ,'
+                                   part_string += " partition  %s " % (partition)
+                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINER '
+                                   part_string += " (%s) " % hvalue if  hvalue != 'REMAINDER' else '      '
+                                   part_string += "in  %s  \n" % (tblspace)
+                               partition_string += part_string
+                               return partition_string
+
                           case  _:
                                return ""
-
                 case _:
                     return ""
 
