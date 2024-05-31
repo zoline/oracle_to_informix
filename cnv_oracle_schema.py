@@ -336,60 +336,9 @@ class Oracle_Source:
                 primary_string += "ALTER TABLE  %s.%s ADD  CONSTRAINT %s  PRIMARY KEY  ( %s ) ;\n" % (owner,table, CONSTRAINT_NAME.lower(), COLUMNS)
             return primary_string   
         
-    def get_indexes(self, owner, table):
-        indexes_query = """
-            SELECT  INDEX_NAME, UNIQUENESS,
-                    LISTAGG(INDEX_COLNAME,',') WITHIN GROUP (ORDER BY  COLUMN_POSITION ) AS COLUMNS
-              FROM ( 
-                    SELECT A.INDEX_NAME AS INDEX_NAME, DECODE(A.UNIQUENESS,'NONUNIQUE',' ',A.UNIQUENESS) AS UNIQUENESS, 
-		                   B.COLUMN_POSITION AS COLUMN_POSITION,
-		                   CASE 
-                                WHEN C.USER_GENERATED = 'YES' THEN B.COLUMN_NAME ||' '||DECODE(B.DESCEND,'ASC','',B.DESCEND)
-     		                    ELSE extractvalue(dbms_xmlgen.getxmltype(
-                                                   'SELECT DATA_DEFAULT 
-                                                      FROM ALL_TAB_COLS 
-          			                                  WHERE TABLE_NAME = '''||A.TABLE_NAME||''' AND COLUMN_NAME = ''' ||  B.COLUMN_NAME || ''''
-        			                              ), '//text()' ) ||' '||DECODE(B.DESCEND,'ASC','',B.DESCEND)
-     		               END AS INDEX_COLNAME
-		              FROM ALL_INDEXES A, ALL_IND_COLUMNS B, ALL_TAB_COLS C
-		            WHERE A.OWNER='%s'
-		              AND A.TABLE_NAME = '%s'
-		              AND A.OWNER = B.INDEX_OWNER 
-		              AND A.OWNER = C.OWNER
-		              AND A.TABLE_NAME = C.TABLE_NAME
-		              AND B.COLUMN_NAME = C.COLUMN_NAME
-		              AND A.INDEX_NAME = B.INDEX_NAME 
-                      AND A.INDEX_NAME NOT IN
-                      (
-                          SELECT CONSTRAINT_NAME
-                            FROM ALL_CONSTRAINTS 
-                           WHERE OWNER=A.OWNER
-                             AND TABLE_NAME=A.TABLE_NAME
-                             AND CONSTRAINT_TYPE='U'
-                      )
-		) D
-        GROUP BY D.INDEX_NAME, D.UNIQUENESS
-        """        
-        indexes_string = ""
-        query = indexes_query % (owner.upper(), table.upper())
-        #print (query)
-        with self.conn.cursor() as cur:
-            cur.execute(query)
-            res = cur.fetchall()
-        if res is None:
-            return None
-        else:
-            for INDEX_NAME, UNIQUENESS, COLUMNS in res:
-                indexes_string += "create "
-                if UNIQUENESS == "UNIQUE":
-                    indexes_string += "   unique "
-                else: 
-                    indexes_string += "   " 
-                
-                indexes_string += "index %s.%s on %s ( %s ) ;\n" % ( owner.lower(), INDEX_NAME.lower(), table.lower(), COLUMNS.lower())
-            return indexes_string   
+   
 
-    
+
   
     
     def get_foreignkey_constraints(self, owner, table):
@@ -658,7 +607,7 @@ class Oracle_Source:
                       partition_string += part_string
                       return partition_string
                 case 'HASH':
-                      print("HASH %s " % part_column)
+                      #print("HASH %s " % part_column)
                       match  part_column:
                           case 'DEVICENUM':          # FOR TEST 
                                partition_string += " expression  \n" 
@@ -685,11 +634,157 @@ class Oracle_Source:
                                return ""
                 case _:
                     return ""
+                
+
+    def get_index_partition(self, owner, index):
+        partition_query = """
+		SELECT B.INDEX_NAME,B.PARTITIONING_TYPE, B.PARTITION_COUNT,
+			LISTAGG(C.PARTITION_NAME,',') WITHIN GROUP (ORDER BY  C.PARTITION_POSITION) AS PARTITIONS,
+			LISTAGG(C.TABLESPACE_NAME,',') WITHIN GROUP (ORDER BY  C.PARTITION_POSITION) AS TABLSPACES,
+			LISTAGG( 
+				DECODE(B.PARTITIONING_TYPE,'LIST',
+					extractvalue(dbms_xmlgen.getxmltype(
+       		         			'SELECT HIGH_VALUE
+       		           		  FROM ALL_IND_PARTITIONS 
+     							 WHERE INDEX_OWNER = '''||A.OWNER||''' AND INDEX_NAME = ''' ||A.INDEX_NAME ||  
+     							 ''' AND PARTITION_NAME = ''' || C.PARTITION_NAME || ''' AND PARTITION_POSITION = '''|| C.PARTITION_POSITION || ''''), '//text()' )
+     			,' ') ,',') WITHIN GROUP (ORDER BY  C.PARTITION_POSITION) AS HIGH_VALUES	
+		FROM ALL_INDEXES A, ALL_PART_INDEXES B, ALL_IND_PARTITIONS C
+		WHERE A.OWNER='%s'
+          AND A.INDEX_NAME = '%s'
+		  AND A.OWNER = B.OWNER 
+		  AND A.OWNER = C.INDEX_OWNER
+		  AND A.INDEX_NAME = B.INDEX_NAME 
+		  AND A.PARTITIONED ='YES'
+		  AND A.INDEX_NAME = C.INDEX_NAME
+		GROUP BY B.INDEX_NAME,B.PARTITIONING_TYPE,B.PARTITION_COUNT
+             """        
+        partition_string = ""
+        query = partition_query % (owner.upper(), index.upper())
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            res = cur.fetchone()
+        if res is None:
+            return None
+        else:
+            part_column = self.get_part_colname(owner,'INDEX',index)
+            (INDEX_NAME,PARTITIONING_TYPE,PARTITION_COUNT,PARTITIONS,TBLSPACES,HIGH_VALUES) = res	
+            partitions = re.split(r',',PARTITIONS)
+            tblspaces = re.split(r',',TBLSPACES)
+            hvalues = re.split(r',',HIGH_VALUES)
+
+            partition_string += "  fragment by "
+            match PARTITIONING_TYPE:
+                case 'LIST':
+                      partition_string += " list ( %s )\n" % ( part_column )
+                      part_string = ""
+                      for (partition, tblspace, hvalue) in zip(partitions,tblspaces,hvalues):
+                           part_string += '    ' if part_string == "" else '   ,'
+                           part_string += "partition  %s values (%s) in  %s  \n" % (partition, hvalue, tblspace)
+                      partition_string += part_string
+                      return partition_string
+                case 'HASH':
+                      #print("HASH %s " % part_column)
+                      match  part_column:
+                          case 'DEVICENUM':          # FOR TEST 
+                               partition_string += " expression  \n" 
+                               part_string = ""
+                               for (partition, tblspace, hvalue) in zip(self.DEVICE_PARTITIONS,self.DEVICE_TBLSPACES,self.DEVICE_HVALUES):
+                                   part_string += '    ' if part_string == "" else '   ,'
+                                   part_string += " partition  %s (%s) in  %s  \n" % (partition, hvalue, tblspace)
+                               partition_string += part_string
+                               return partition_string
+                          case  'GENDATETIME':
+                               partition_string += " LIST (GENDATETIME[1,4])  \n" 
+                               part_string = ""
+
+                               for (partition, tblspace, hvalue) in zip(self.GENDATE_PARTITIONS,self.GENDATE_TBLSPACES,self.GENDATE_HVALUES):
+                                   part_string += '    ' if part_string == "" else '   ,'
+                                   part_string += " partition  %s " % (partition)
+                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINER '
+                                   part_string += " (%s) " % hvalue if  hvalue != 'REMAINDER' else '      '
+                                   part_string += "in  %s  \n" % (tblspace)
+                               partition_string += part_string
+                               return partition_string
+                          case  _:
+                               partition_string += " HASH ( %s )\n" % ( part_column )
+                               part_string = ""
+                               for (partition, tblspace, hvalue) in zip(partitions,tblspaces,hvalues):
+                                   part_string += '    ' if part_string == "" else '   ,'
+                                   part_string += "partition  %s values (???) in  %s  \n" % (partition, tblspace)
+                               partition_string += part_string
+                               return partition_string
+                          
+                case _:
+                    return ""
+
+
+        return ""   
+    
+    def get_indexes(self, owner, table):
+        indexes_query = """
+            SELECT  INDEX_NAME, UNIQUENESS, TBLSPACE_NAME,PARTITIONED,
+                    LISTAGG(INDEX_COLNAME,',') WITHIN GROUP (ORDER BY  COLUMN_POSITION ) AS COLUMNS
+              FROM ( 
+                    SELECT A.INDEX_NAME AS INDEX_NAME,A.TABLESPACE_NAME AS TBLSPACE_NAME,A.PARTITIONED AS PARTITIONED,
+                           DECODE(A.UNIQUENESS,'NONUNIQUE',' ',A.UNIQUENESS) AS UNIQUENESS, 
+		                   B.COLUMN_POSITION AS COLUMN_POSITION,
+		                   CASE 
+                                WHEN C.USER_GENERATED = 'YES' THEN B.COLUMN_NAME ||' '||DECODE(B.DESCEND,'ASC','',B.DESCEND)
+     		                    ELSE extractvalue(dbms_xmlgen.getxmltype(
+                                                   'SELECT DATA_DEFAULT 
+                                                      FROM ALL_TAB_COLS 
+          			                                  WHERE TABLE_NAME = '''||A.TABLE_NAME||''' AND COLUMN_NAME = ''' ||  B.COLUMN_NAME || ''''
+        			                              ), '//text()' ) ||' '||DECODE(B.DESCEND,'ASC','',B.DESCEND)
+     		               END AS INDEX_COLNAME
+		              FROM ALL_INDEXES A, ALL_IND_COLUMNS B, ALL_TAB_COLS C
+		            WHERE A.OWNER='%s'
+		              AND A.TABLE_NAME = '%s'
+		              AND A.OWNER = B.INDEX_OWNER 
+		              AND A.OWNER = C.OWNER
+		              AND A.TABLE_NAME = C.TABLE_NAME
+		              AND B.COLUMN_NAME = C.COLUMN_NAME
+		              AND A.INDEX_NAME = B.INDEX_NAME 
+                      AND A.INDEX_NAME NOT IN
+                      (
+                          SELECT CONSTRAINT_NAME
+                            FROM ALL_CONSTRAINTS 
+                           WHERE OWNER=A.OWNER
+                             AND TABLE_NAME=A.TABLE_NAME
+                             AND CONSTRAINT_TYPE='U'
+                      )
+		) D
+        GROUP BY D.INDEX_NAME,D.TBLSPACE_NAME,D.PARTITIONED,D.UNIQUENESS
+        """        
+        indexes_string = ""
+        query = indexes_query % (owner.upper(), table.upper())
+        #print (query)
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            res = cur.fetchall()
+        if res is None:
+            return None
+        else:
+            for INDEX_NAME, UNIQUENESS,TBLSPACE_NAME,PARTITIONED,COLUMNS in res:
+                indexes_string += "create "
+                if UNIQUENESS == "UNIQUE":
+                    indexes_string += "   unique "
+                else: 
+                    indexes_string += "   " 
+                
+                indexes_string += "index %s.%s on %s ( %s ) " % ( owner.lower(), INDEX_NAME.lower(), table.lower(), COLUMNS.lower())
+                if PARTITIONED != 'YES':
+                    indexes_string += "\n in  %s " % TBLSPACE_NAME
+                else:   
+                    indexes_string += "\n %s    " % self.get_index_partition(owner,INDEX_NAME)
+                indexes_string += ";\n"
+            return indexes_string   
+        
 
 
     def make_user_schema(self,owner):
         owner = owner.upper()
-        table_filter = "OWNER = '%s' AND TABLE_NAME in ('STAT_CRSWIF_04', 'PERF_CRSWIF_0322_600','SYSLOG_RAW_TBL') " % owner
+        table_filter = "OWNER = '%s' AND TABLE_NAME in ('STAT_CRSWIF_04', 'PERF_CRSWIF_0322_600','SYSLOG_RAW_TBL', 'ALARM_CUSTOMER_FTTH_TEMP') " % owner
         res= self.get_tables(table_filter)
         table_statement = ""
         if res is None:
@@ -748,8 +843,7 @@ def main(argv, args):
     owner=args['u']
 
     res=oracle.make_user_schema(owner)
-
-        
+       
         
 if '--version' in sys.argv:
 	print(__version__)
