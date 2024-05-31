@@ -624,7 +624,7 @@ class Oracle_Source:
                                for (partition, tblspace, hvalue) in zip(self.GENDATE_PARTITIONS,self.GENDATE_TBLSPACES,self.GENDATE_HVALUES):
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += " partition  %s " % (partition)
-                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINER '
+                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAIDNER '
                                    part_string += " (%s) " % hvalue if  hvalue != 'REMAINDER' else '      '
                                    part_string += "in  %s  \n" % (tblspace)
                                partition_string += part_string
@@ -701,7 +701,7 @@ class Oracle_Source:
                                for (partition, tblspace, hvalue) in zip(self.GENDATE_PARTITIONS,self.GENDATE_TBLSPACES,self.GENDATE_HVALUES):
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += " partition  %s " % (partition)
-                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINER '
+                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINDER '
                                    part_string += " (%s) " % hvalue if  hvalue != 'REMAINDER' else '      '
                                    part_string += "in  %s  \n" % (tblspace)
                                partition_string += part_string
@@ -801,7 +801,7 @@ class Oracle_Source:
                 if PARTITIONED == 'YES':
                     table_statement += self.get_table_partition(OWNER,TABLE_NAME);
                 else:
-                    table_statement += "in %s " %  (TABLESPACE_NAME)  
+                    table_statement += " in %s " %  (TABLESPACE_NAME)  
 
                 table_statement += "   extent size %s next size %s lock mode row;\n" % (init_extent, next_extent) 
 
