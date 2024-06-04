@@ -309,7 +309,7 @@ class Oracle_Source:
             return None
         else:
             for CONSTRAINT_NAME, COLUMNS in res:
-                unique_string += "alter table %s.%s add constraint %s  unique ( %s ) ;\n" % (owner.lower(),table.lower(), CONSTRAINT_NAME.lower(), COLUMNS.lower())
+                unique_string += "ALTER TABLE %s.%s ADD CONSTRAINT  UNIQUE ( %s ) CONSTRAINT %s ;\n" % (owner.lower(),table.lower(), COLUMNS.lower(), CONSTRAINT_NAME.lower())
             return unique_string
 
     def get_primary_constraints(self, owner, table):
@@ -333,13 +333,10 @@ class Oracle_Source:
             return None
         else:
             for CONSTRAINT_NAME, COLUMNS in res:
-                primary_string += "ALTER TABLE  %s.%s ADD  CONSTRAINT %s  PRIMARY KEY  ( %s ) ;\n" % (owner,table, CONSTRAINT_NAME.lower(), COLUMNS)
+                primary_string += "ALTER TABLE  %s.%s ADD  CONSTRAINT  PRIMARY KEY  ( %s ) CONSTRAINT  %s ;\n" % (owner,table,COLUMNS, CONSTRAINT_NAME.lower())
             return primary_string   
         
    
-
-
-  
     
     def get_foreignkey_constraints(self, owner, table):
         fk_query = """
@@ -371,7 +368,7 @@ class Oracle_Source:
             return None
         else:
             for CONSTRAINT_NAME, REF_NAME, FK_COLUMNS, REF_TABLE,REF_COLUMNS in res:
-                fk_string += "ALTER TABLE %s.%s ADD  CONSTRAINT %s  FOREIGN KEY ( %s ) REFERENCES %s " % (owner,table, CONSTRAINT_NAME.lower(), FK_COLUMNS, REF_TABLE)
+                fk_string += "ALTER TABLE %s.%s ADD  CONSTRAINT  FOREIGN KEY ( %s ) REFERENCES %s CONSTRAINT %s " % (owner,table,  FK_COLUMNS, REF_TABLE, CONSTRAINT_NAME.lower())
                 if FK_COLUMNS != REF_COLUMNS:
                     fk_string += " (%s) ;\n" % REF_COLUMNS;
                 else:
@@ -622,6 +619,7 @@ class Oracle_Source:
                                part_string = ""
 
                                for (partition, tblspace, hvalue) in zip(self.GENDATE_PARTITIONS,self.GENDATE_TBLSPACES,self.GENDATE_HVALUES):
+                                   tblspace = 'datadbs' ## FOR TEST
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += " partition  %s " % (partition)
                                    part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAIDNER '
@@ -679,6 +677,7 @@ class Oracle_Source:
                       partition_string += " list ( %s )\n" % ( part_column )
                       part_string = ""
                       for (partition, tblspace, hvalue) in zip(partitions,tblspaces,hvalues):
+                           tblspace = 'datadbs' ## FOR TEST
                            part_string += '    ' if part_string == "" else '   ,'
                            part_string += "partition  %s values (%s) in  %s  \n" % (partition, hvalue, tblspace)
                       partition_string += part_string
@@ -690,6 +689,7 @@ class Oracle_Source:
                                partition_string += " expression  \n" 
                                part_string = ""
                                for (partition, tblspace, hvalue) in zip(self.DEVICE_PARTITIONS,self.DEVICE_TBLSPACES,self.DEVICE_HVALUES):
+                                   tblspace = 'datadbs' ## FOR TEST
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += " partition  %s (%s) in  %s  \n" % (partition, hvalue, tblspace)
                                partition_string += part_string
@@ -699,6 +699,7 @@ class Oracle_Source:
                                part_string = ""
 
                                for (partition, tblspace, hvalue) in zip(self.GENDATE_PARTITIONS,self.GENDATE_TBLSPACES,self.GENDATE_HVALUES):
+                                   tblspace = 'datadbs' ## FOR TEST
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += " partition  %s " % (partition)
                                    part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINDER '
@@ -710,6 +711,7 @@ class Oracle_Source:
                                partition_string += " HASH ( %s )\n" % ( part_column )
                                part_string = ""
                                for (partition, tblspace, hvalue) in zip(partitions,tblspaces,hvalues):
+                                   tblspace = 'datadbs' ## FOR TEST
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += "partition  %s values (???) in  %s  \n" % (partition, tblspace)
                                partition_string += part_string
@@ -766,13 +768,14 @@ class Oracle_Source:
             return None
         else:
             for INDEX_NAME, UNIQUENESS,TBLSPACE_NAME,PARTITIONED,COLUMNS in res:
+                TBLSPACE_NAME = 'datadbs' ## FOR TEST
                 indexes_string += "create "
                 if UNIQUENESS == "UNIQUE":
                     indexes_string += "   unique "
                 else: 
                     indexes_string += "   " 
                 
-                indexes_string += "index %s.%s on %s ( %s ) " % ( owner.lower(), INDEX_NAME.lower(), table.lower(), COLUMNS.lower())
+                indexes_string += "index \"%s\".%s on \"%s\".%s ( %s ) " % ( owner.lower(), INDEX_NAME.lower(), owner.lower(),table.lower(), COLUMNS.lower())
                 if PARTITIONED != 'YES':
                     indexes_string += "\n in  %s " % TBLSPACE_NAME
                 else:   
@@ -791,6 +794,8 @@ class Oracle_Source:
             print ("No table found !!!\n")
         else:
             for  OWNER, TABLE_NAME,TABLESPACE_NAME,STATUS, INITIAL_EXTENT, NEXT_EXTENT, PARTITIONED,READ_ONLY,AVG_ROW_LEN in res:
+                TABLESPACE_NAME = 'datadbs' ## FOR TEST
+
                 table_statement = "create table \"%s\".%s \n  ( \n" % (owner.lower(), TABLE_NAME.lower())
                 table_statement += self.get_columns(owner,TABLE_NAME)           
                 table_statement += "  )\n"
