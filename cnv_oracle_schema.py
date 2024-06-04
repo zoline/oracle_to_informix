@@ -246,7 +246,7 @@ class Oracle_Source:
             FROM ALL_CONSTRAINTS A, ALL_CONS_COLUMNS B 
            WHERE A.OWNER  = '%s'
              AND A.TABLE_NAME = '%s'
-             AND A.CONSTRAINT_TYPE='C'
+             AND A.CONSTRAINT_TYPE='N'
              AND A.OWNER = B.OWNER
              AND B.COLUMN_NAME ='%s'
              AND A.CONSTRAINT_NAME  = B.CONSTRAINT_NAME               
@@ -266,13 +266,13 @@ class Oracle_Source:
     def get_check_constraints(self, owner, table):
         check_query = """
           SELECT A.CONSTRAINT_NAME, A.SEARCH_CONDITION_VC
-            FROM ALL_CONSTRAINTS A, ALL_CONS_COLUMNS B 
+            FROM ALL_CONSTRAINTS A  -- , ALL_CONS_COLUMNS B 
            WHERE A.OWNER  = '%s'
              AND A.TABLE_NAME = '%s'
              AND A.CONSTRAINT_TYPE='C'
-             AND A.OWNER = B.OWNER
+             --  AND A.OWNER = B.OWNER
              AND A.SEARCH_CONDITION_VC  NOT LIKE '%% IS NOT NULL'   
-             AND A.CONSTRAINT_NAME  = B.CONSTRAINT_NAME       
+             -- AND A.CONSTRAINT_NAME  = B.CONSTRAINT_NAME       
              """        
         check_string = ""
         query = check_query % (owner.upper(), table.upper())
@@ -284,7 +284,7 @@ class Oracle_Source:
             return None
         else:
             for CONSTRAINT_NAME, SEARCH_CONDITION in res:
-                check_string += "alter table %s.%s add constraint %s  CHECK ( %s ) ;\n" % (owner.lower(),table.lower(),CONSTRAINT_NAME.lower(), SEARCH_CONDITION)
+                check_string += "alter table %s.%s add constraint  CHECK ( %s ) constraint %s ;\n" % (owner.lower(),table.lower(),SEARCH_CONDITION,CONSTRAINT_NAME.lower() )
             return check_string
         
     def get_unique_constraints(self, owner, table):
@@ -367,11 +367,11 @@ class Oracle_Source:
             return None
         else:
             for CONSTRAINT_NAME, REF_NAME, FK_COLUMNS, REF_TABLE,REF_COLUMNS in res:
-                fk_string += "ALTER TABLE %s.%s ADD  CONSTRAINT  FOREIGN KEY ( %s ) REFERENCES %s CONSTRAINT %s " % (owner,table,  FK_COLUMNS, REF_TABLE, CONSTRAINT_NAME.lower())
+                fk_string += "ALTER TABLE %s.%s ADD  CONSTRAINT  FOREIGN KEY ( %s ) REFERENCES %s " % (owner,table,  FK_COLUMNS, REF_TABLE)
                 if FK_COLUMNS != REF_COLUMNS:
-                    fk_string += " (%s) ;\n" % REF_COLUMNS;
+                    fk_string += " (%s) CONSTRAINT %s ;\n" % (REF_COLUMNS, CONSTRAINT_NAME.lower())
                 else:
-                    fk_string += ";\n";
+                    fk_string += " CONSTRAINT %s ;\n" % (CONSTRAINT_NAME.lower())
             return fk_string   
          
                 
@@ -786,9 +786,10 @@ class Oracle_Source:
 
     def make_user_schema(self,owner):
         owner = owner.upper()
-        table_filter = "OWNER = '%s' " % owner
+        table_filter = "OWNER = '%s'  " % owner
         res= self.get_tables(table_filter)
         table_statement = ""
+        fk_string = ""
         if res is None:
             print ("No table found !!!\n")
         else:
@@ -818,10 +819,13 @@ class Oracle_Source:
                 table_statement += "\n"                     
                 table_statement += self.get_primary_constraints(owner,TABLE_NAME)                            
                 table_statement += "\n"                     
-                table_statement += self.get_foreignkey_constraints(owner,TABLE_NAME)                           
-                table_statement += "\n"                     
+                fk_string += self.get_foreignkey_constraints(owner,TABLE_NAME)                           
+                fk_string += "\n"                     
                 print(table_statement)
         
+        print("\n")
+        print(fk_string)
+        print("\n")
         owner = owner.upper()
         sequence_string = self.get_sequences(owner)
         print(sequence_string)
