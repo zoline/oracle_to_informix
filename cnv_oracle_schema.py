@@ -799,15 +799,15 @@ class Oracle_Source:
                 table_statement += self.get_columns(owner,TABLE_NAME)           
                 table_statement += "  )\n"
 
-                init_extent = INITIAL_EXETNT if INITIAL_EXTENT >  16  else 64;
-                next_extent = NEXT_EXETNT if NEXT_EXTENT >  16  else 64;
+                init_extent = INITIAL_EXTENT if INITIAL_EXTENT >  16  else 64;
+                next_extent = NEXT_EXTENT if NEXT_EXTENT >  16  else 64;
 
                 if PARTITIONED == 'YES':
                     table_statement += self.get_table_partition(OWNER,TABLE_NAME);
                 else:
                     table_statement += " in %s " %  (TABLESPACE_NAME)  
 
-                table_statement += "   extent size %s next size %s lock mode row;\n" % (init_extent, next_extent) 
+                table_statement += "   extent size %s next size %s lock mode row;\n\n" % (init_extent, next_extent) 
 
                 table_statement += self.get_indexes(owner,TABLE_NAME) 
                 table_statement += "\n"                     
