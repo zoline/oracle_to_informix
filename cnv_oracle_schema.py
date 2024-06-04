@@ -181,7 +181,6 @@ class Oracle_Source:
     def get_default_string(cls,data_default):
         pass
     
-    
         
     def __init__(self, ):
         self.conn = None
@@ -409,7 +408,7 @@ class Oracle_Source:
                 column_string += col_type
                 
                 if DATA_DEFAULT is not None:
-                    column_string += " default %s " % DATA_DEFAULT   
+                    column_string += " default '%s' " % DATA_DEFAULT   
                 
                 if NULLABLE == 'N':
                     #constr_string = self.get_notnull_constraint(owner,table,COLUMN_NAME)
@@ -622,7 +621,7 @@ class Oracle_Source:
                                    tblspace = 'datadbs' ## FOR TEST
                                    part_string += '    ' if part_string == "" else '   ,'
                                    part_string += " partition  %s " % (partition)
-                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAIDNER '
+                                   part_string += " VALUES " if hvalue != 'REMAINDER' else ' REMAINDER '
                                    part_string += " (%s) " % hvalue if  hvalue != 'REMAINDER' else '      '
                                    part_string += "in  %s  \n" % (tblspace)
                                partition_string += part_string
@@ -810,13 +809,14 @@ class Oracle_Source:
 
                 table_statement += "   extent size %s next size %s lock mode row;\n" % (init_extent, next_extent) 
 
+                table_statement += self.get_indexes(owner,TABLE_NAME) 
+                table_statement += "\n"                     
+
                 table_statement += self.get_check_constraints(owner,TABLE_NAME)       
                 table_statement += "\n"                     
                 table_statement += self.get_unique_constraints(owner,TABLE_NAME)                            
                 table_statement += "\n"                     
                 table_statement += self.get_primary_constraints(owner,TABLE_NAME)                            
-                table_statement += "\n"                     
-                table_statement += self.get_indexes(owner,TABLE_NAME) 
                 table_statement += "\n"                     
                 table_statement += self.get_foreignkey_constraints(owner,TABLE_NAME)                           
                 table_statement += "\n"                     
