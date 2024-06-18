@@ -338,7 +338,7 @@ class Oracle_Source:
    
     
     def get_foreignkey_constraints(self, owner, table):
-        fk_query = """
+        fk_query_org = """
                 SELECT FK.CONSTRAINT_NAME, FK.REF_NAME, FK.FK_COLUMNS,  R.TABLE_NAME, LISTAGG(R.COLUMN_NAME, ',') WITHIN GROUP (ORDER BY R.POSITION) AS REF_COLUMNS
                 FROM (
                             SELECT A.OWNER AS OWNER,
@@ -357,6 +357,27 @@ class Oracle_Source:
                     AND FK.REF_NAME = R.CONSTRAINT_NAME
                 GROUP BY FK.CONSTRAINT_NAME, FK.REF_NAME,  R.TABLE_NAME, FK.FK_COLUMNS  
              """        
+        fk_query = """
+                          SELECT A.CONSTRAINT_NAME   					AS CONSTRAINT_NAME,
+                                 A.R_CONSTRAINT_NAME 					AS REF_NAME,
+                                 (SELECT LISTAGG(B.COLUMN_NAME,',') WITHIN GROUP (ORDER BY B.POSITION) 
+                                         FROM ALL_CONS_COLUMNS B   
+                                        WHERE A.OWNER = B.OWNER
+                                          AND A.TABLE_NAME = B.TABLE_NAME
+                                          AND B.CONSTRAINT_NAME = A.CONSTRAINT_NAME)	 AS FK_COLUMNS,
+                                	R.TABLE_NAME ,
+                                 (SELECT LISTAGG(B.COLUMN_NAME,',') WITHIN GROUP (ORDER BY B.POSITION) 
+                                         FROM ALL_CONS_COLUMNS B   
+                                        WHERE A.OWNER = B.OWNER
+                                          AND R.TABLE_NAME = B.TABLE_NAME
+                                          AND B.CONSTRAINT_NAME = A.R_CONSTRAINT_NAME)	 AS REF_COLUMNS         
+                             FROM ALL_CONSTRAINTS A, ALL_CONSTRAINTS R
+                            WHERE   A.OWNER  = '%s'
+                                AND A.OWNER = R.OWNER
+                                AND A.TABLE_NAME = '%s'
+                                AND A.CONSTRAINT_TYPE='R'
+                                AND A.R_CONSTRAINT_NAME = R.CONSTRAINT_NAME
+            """
         fk_string = ""
         query = fk_query % (owner.upper(), table.upper())
         #print (query)
@@ -722,7 +743,7 @@ class Oracle_Source:
 
         return ""   
     
-    def get_indexes(self, owner, table):
+    def get_indexes_org(self, owner, table):
         indexes_query = """
             SELECT  INDEX_NAME, UNIQUENESS, TBLSPACE_NAME,PARTITIONED,
                     LISTAGG(INDEX_COLNAME,',') WITHIN GROUP (ORDER BY  COLUMN_POSITION ) AS COLUMNS
@@ -758,7 +779,7 @@ class Oracle_Source:
         GROUP BY D.INDEX_NAME,D.TBLSPACE_NAME,D.PARTITIONED,D.UNIQUENESS
         """        
         indexes_string = ""
-        query = indexes_query % (owner.upper(), table.upper())
+        query = indexes_query % (owner.upper(), table.upper(),table.upper())
         #print (query)
         with self.conn.cursor() as cur:
             cur.execute(query)
@@ -774,6 +795,83 @@ class Oracle_Source:
                 else: 
                     indexes_string += "   " 
                 
+                indexes_string += "index \"%s\".%s on \"%s\".%s ( %s ) " % ( owner.lower(), INDEX_NAME.lower(), owner.lower(),table.lower(), COLUMNS.lower())
+                if PARTITIONED != 'YES':
+                    indexes_string += "\n in  %s " % TBLSPACE_NAME
+                else:   
+                    indexes_string += "\n %s    " % self.get_index_partition(owner,INDEX_NAME)
+                indexes_string += ";\n"
+        return indexes_string   
+
+
+    def get_index_cols(self,owner,index):
+        index_col_query = """
+            SELECT  CASE
+                     WHEN C.USER_GENERATED = 'YES' THEN B.COLUMN_NAME ||' '||DECODE(B.DESCEND,'ASC','',B.DESCEND)
+                     ELSE extractvalue(dbms_xmlgen.getxmltype(
+                           'SELECT DATA_DEFAULT
+                              FROM ALL_TAB_COLS
+                             WHERE TABLE_NAME = '''||B.TABLE_NAME||''' AND COLUMN_NAME = ''' ||  B.COLUMN_NAME || ''''), '//text()' ) ||' '||DECODE(B.DESCEND,'ASC','',B.DESCEND)
+                     END AS INDEX_COLNAME
+                FROM  ALL_IND_COLUMNS B, ALL_TAB_COLS C
+               WHERE B.INDEX_OWNER='%s'
+                 AND B.INDEX_NAME = '%s'
+                 AND B.TABLE_NAME = C.TABLE_NAME
+                 AND B.COLUMN_NAME = C.COLUMN_NAME
+            ORDER BY B.COLUMN_POSITION
+        """
+        index_col_string = ""
+        query = index_col_query % (owner.upper(), index.upper())
+        #print (query)
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            res = cur.fetchall()
+        if res is None:
+            return None
+        else:
+            for INDEX_COLNAME in res:
+                index_col_string  += '' if index_col_string == '' else ','
+                index_col_string  += " %s"% INDEX_COLNAME
+        return index_col_string
+
+
+    def get_indexes(self, owner, table):
+        indexes_query = """
+                    SELECT A.INDEX_NAME AS INDEX_NAME,
+                           A.TABLESPACE_NAME AS TBLSPACE_NAME,
+                           A.PARTITIONED AS PARTITIONED,
+                           DECODE(A.UNIQUENESS,'NONUNIQUE',' ', A.UNIQUENESS) AS UNIQUENESS
+                      FROM ALL_INDEXES A
+                     WHERE A.OWNER='%s'
+                       AND A.TABLE_NAME = '%s'
+                       AND A.INDEX_NAME NOT IN
+                      (
+                          SELECT CONSTRAINT_NAME
+                            FROM ALL_CONSTRAINTS
+                           WHERE OWNER=A.OWNER
+                             AND TABLE_NAME='%s'
+                             AND CONSTRAINT_TYPE='U'
+                      )
+        """
+        indexes_string = ""
+        query = indexes_query % (owner.upper(), table.upper(),table.upper())
+        #print (query)
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            res = cur.fetchall()
+        if res is None:
+            return None
+        else:
+            for INDEX_NAME, UNIQUENESS,TBLSPACE_NAME,PARTITIONED in res:
+                TBLSPACE_NAME = 'datadbs' ## FOR TEST
+                indexes_string += "create "
+                if UNIQUENESS == "UNIQUE":
+                    indexes_string += "   unique "
+                else: 
+                    indexes_string += "   " 
+
+                COLUMNS = self.get_index_cols(owner.upper(),INDEX_NAME)
+
                 indexes_string += "index \"%s\".%s on \"%s\".%s ( %s ) " % ( owner.lower(), INDEX_NAME.lower(), owner.lower(),table.lower(), COLUMNS.lower())
                 if PARTITIONED != 'YES':
                     indexes_string += "\n in  %s " % TBLSPACE_NAME
